@@ -1,3 +1,5 @@
+PERSONAL README
+
 ![demo](snack-logo.jpg)
 Stochastic Neighbor and Crowd Kernel (SNaCK) embedding
 ======================================================
