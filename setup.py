@@ -16,9 +16,8 @@ USE_SSE_AVX = False
 compile_args = [
     '-O3',
     '-ffast-math',
-    '-fopenmp',
 ]
-link_args = ['-fopenmp']
+link_args = ['']
 blas_library_name = "-lblas" # added to link_args at the end
 include_dirs = [
     numpy.get_include(),
@@ -47,7 +46,7 @@ if platform.system() == "Darwin":
     else:
         # If you are NOT in a Conda environment, you MUST ensure that
         # you have the proper gcc version!
-        GCC_VERSION = "/usr/local/bin/gcc-5"
+        GCC_VERSION = "/opt/anaconda/bin/gcc"
         # Use a gcc from Homebrew !!
     if not os.path.exists(GCC_VERSION):
         print "Please install GCC from homebrew wth:"

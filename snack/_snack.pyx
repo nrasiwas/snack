@@ -17,7 +17,6 @@ All rights reserved. Please see the 'LICENSE.txt' file in the source distriution
 cimport cython
 cimport numpy as np
 cimport cython.parallel
-cimport openmp
 
 import numpy as np
 import os
@@ -249,11 +248,6 @@ def snack_embed(
     """
     def logf(s, *args):
         if verbose: print s%args
-
-    # Set number of threads
-    if num_threads is None:
-        num_threads = openmp.omp_get_num_procs()
-    openmp.omp_set_num_threads(num_threads)
 
     # Set up variables
     cdef int N = X_np.shape[0], D = X_np.shape[1]
