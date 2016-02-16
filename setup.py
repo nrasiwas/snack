@@ -18,7 +18,7 @@ compile_args = [
     '-ffast-math',
 ]
 link_args = ['']
-blas_library_name = "-lblas" # added to link_args at the end
+blas_library_name = "-lcblas" # added to link_args at the end
 include_dirs = [
     numpy.get_include(),
     "lib-bhtsne",
@@ -65,10 +65,16 @@ if platform.system() == "Darwin":
         # GNU assembler does not, for some reason.
 
 # Inside Conda, we should link against Conda-provided OpenBLAS.
-if platform.system() == "Linux" and 'CONDA_BUILD' in os.environ:
-    include_dirs.append(os.environ["PREFIX"]+"/include")
-    library_dirs.append(os.environ["PREFIX"]+"/include")
-    blas_library_name = "-lopenblas"
+if platform.system() == "Linux":
+    if 'CONDA_BUILD' in os.environ:
+        include_dirs.append(os.environ["PREFIX"]+"/include")
+        library_dirs.append(os.environ["PREFIX"]+"/include")
+        blas_library_name = "-lopenblas"
+    else:
+        BLAS_INCLUDE = "/usr/include/atlas"
+        BLAS_LIB = "/usr/lib64/atlas"
+        include_dirs.append(BLAS_INCLUDE)
+        library_dirs.append(BLAS_LIB)
 
 snack_extension = Extension(
     'snack._snack', [
