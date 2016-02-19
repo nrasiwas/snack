@@ -17,6 +17,7 @@ All rights reserved. Please see the 'LICENSE.txt' file in the source distriution
 cimport cython
 cimport numpy as np
 cimport cython.parallel
+cimport openmp
 
 import numpy as np
 import os
@@ -138,22 +139,25 @@ cdef class Exact_BHTSNE(object):
 def snack_embed(
         # Important:
         double[:, ::1] X_np,
+        double[:, ::1] Z_np,
+        int[:] in_previous,
         double contrib_cost_tsne,
-        long[:,::1] triplets,
         double contrib_cost_triplets,
-        double perplexity = 30.0,
+        long[:,::1] triplets,
+        double perplexity = 200.0,
         double theta = 0,
 
         # Fine-grained optimization control:
         int no_dims = 2,
         alpha = None,
-        int max_iter = 300,     # BH-tSNE default: 1000
-        early_exaggeration = 4, # BH-tSNE default: 12
-        early_exaggeration_switch_iter = 100,  # BH-tSNE default: 250 (see max_iter!)
+        int max_iter = 1000,     # BH-tSNE default: 1000
+        int lying = 0,
+        early_exaggeration = 12, # BH-tSNE default: 12
+        early_exaggeration_switch_iter = 250,  # BH-tSNE default: 250 (see max_iter!)
         double momentum = 0.5,
         int momentum_switch_iter = 250,
         double final_momentum = 0.8,
-        double learning_rate = 1.0,
+        double learning_rate = 200.0,
         initial_Y = None,
 
         # Other:
@@ -172,6 +176,10 @@ def snack_embed(
 
     X_np : numpy array with shape (N, D) and type double
         The feature representation of N points in D dimensions.
+    Z_np : numpy array with shape (N, 2) and type double
+        The feature representation of N points in 2 dimensions.
+    in_previous : numpy array with shape (N, 1) and type int
+        To check whether the tsne feature(2d) is already calculated or not.
     contrib_cost_tsne : double
         Trade-off: raises the influence of t-SNE in the final
         embedding. Typical ranges are between 100 and 5000.
@@ -249,6 +257,11 @@ def snack_embed(
     def logf(s, *args):
         if verbose: print s%args
 
+    # Set number of threads
+    if num_threads is None:
+        num_threads = openmp.omp_get_num_procs()
+    openmp.omp_set_num_threads(num_threads)
+
     # Set up variables
     cdef int N = X_np.shape[0], D = X_np.shape[1]
     cdef int n, m, i, j, k
@@ -257,21 +270,29 @@ def snack_embed(
     dY_np = np.zeros((N, no_dims), 'double')
     uY_np = np.zeros((N, no_dims), 'double')
     gains_np = np.zeros((N, no_dims), 'double') + 1.0
-    Y_np = initial_Y if initial_Y is not None else np.random.randn(N, no_dims) * 0.0001
+    # Y_np = initial_Y if initial_Y is not None else np.random.randn(N, no_dims) * 0.0001
+    Y_np = np.asarray(Z_np) 
+    logf('type of Y_np = %s',type(Y_np))
     cdef double[:, ::1] dY_tSNE = dY_tSNE_np # Save gradient wrt. tSNE
     cdef double[:, ::1] dY_tSTE = dY_tSTE_np # Save gradient wrt. tSTE (triplets)
     cdef double[:, ::1] dY = dY_np           # Combined gradient (instantaneous)
     cdef double[:, ::1] uY = uY_np           # Velocity (just the accumulated gradient with momentum)
     cdef double[:, ::1] gains = gains_np     # Momentum hack to quickly stop points going in the wrong direction
     cdef double[:, ::1] Y = Y_np             # FINAL SOLUTION
+    cdef double[:, ::1] oriY = np.zeros((N, no_dims), 'double')
+
+    for i in xrange(N):
+        for j in xrange(no_dims):
+            oriY[i,j] = Y[i,j]
+    logf('type of Y = %s',type(Y))
     alpha = alpha or no_dims - 1             # Degrees of freedom in Student-T kernel
     exact = (theta == 0)
     tsne_evaluator = Exact_BHTSNE() if exact else Inexact_BHTSNE()
     # Set up X (standardization)
     X_np = X_np.copy()
     cdef double[:, ::1] X = X_np
-    X_np -= np.mean(X_np, 0)
-    X_np /= np.max(np.abs(X_np))
+    # X_np -= np.mean(X_np, 0)
+    # X_np /= np.max(np.abs(X_np))
     # Normalize triplet cost by the number of triplets that we have
     contrib_cost_triplets = contrib_cost_triplets*(2.0 / float(len(triplets)) * float(N))
 
@@ -279,7 +300,8 @@ def snack_embed(
     assert -1 not in triplets
     assert np.max(triplets) <= N, "Some triplets refer to nonexistent points."
     if N-1 < 3 * perplexity:
-        raise ValueError("Perplexity too large for the number of data points!")
+        logf("Perplexity too large for the number of data points!");
+        perplexity = ((N - 1) / 3) - 1;
 
     logf("Using no_dims = %d, perplexity = %f, and theta = %f", no_dims, perplexity, theta)
     logf("Computing input similarities...")
@@ -287,13 +309,16 @@ def snack_embed(
 
     # Lie about the P-values
     # (this will be undone later)
-    tsne_evaluator.multiply_p(early_exaggeration)
+    if lying == 1:
+        tsne_evaluator.multiply_p(early_exaggeration)
 
     logf("Learning embedding...")
 
     # Gradient descent!!
     C_tSNE = lambda: -1
     C_tSTE = lambda: -1
+    logf('contrib_cost_tsne = %f',contrib_cost_tsne)
+    logf('contrib_cost_triplets = %f',contrib_cost_triplets)
     for iter in xrange(max_iter):
         if contrib_cost_tsne:
             tsne_evaluator.calculate_gradient(Y, no_dims, dY_tSNE, theta)
@@ -324,20 +349,26 @@ def snack_embed(
             for j in xrange(no_dims):
                 uY[i,j] = momentum * uY[i,j] - learning_rate * gains[i,j] * dY[i,j]
                 # with momentum:
-                Y[i,j] = Y[i,j] + uY[i,j]
+                if in_previous[i] == 0:
+                    Y[i,j] = Y[i,j] + uY[i,j]
                 # turn off momentum for a moment:
                 #Y[i,j] = Y[i,j] - dY[i,j]
 
         # Standardize
         Y_np -= np.mean(Y_np, 0)
 
-        # Stop lying about the P-values after a while, and switch momentum
-        if iter == early_exaggeration_switch_iter:
-            tsne_evaluator.multiply_p( 1.0/early_exaggeration )
+        for i in xrange(N):
+            for j in xrange(no_dims):
+                if in_previous[i] == 1:
+                    Y[i,j] = oriY[i,j]
 
+        # Stop lying about the P-values after a while, and switch momentum
+        if lying == 1:
+            if iter == early_exaggeration_switch_iter:
+                tsne_evaluator.multiply_p( 1.0/early_exaggeration )
         if iter == momentum_switch_iter:
             momentum = final_momentum
-
+        
         if iter%50==0:
             logf("Iter %s", iter)
 
