@@ -258,9 +258,11 @@ def snack_embed(
         if verbose: print s%args
 
     # Set number of threads
+    '''
     if num_threads is None:
         num_threads = openmp.omp_get_num_procs()
     openmp.omp_set_num_threads(num_threads)
+    '''
 
     # Set up variables
     cdef int N = X_np.shape[0], D = X_np.shape[1]
@@ -509,3 +511,4 @@ cpdef tste_grad(npX,
         #         # The 2*lamb*npx is for regularization: derivative of L2 norm
         #         dC[n,i] = dC[n,i] + 2*lamb*X[n,i]
     return C, npdC
+
