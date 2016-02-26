@@ -25,6 +25,7 @@ import gc
 
 from libc cimport math
 from libc.stdlib cimport malloc, free
+from confobj import Confobj as snack_conf
 
 # External wrappers for Barnes Hut t-SNE:
 cdef extern from "tsne.h":
@@ -164,6 +165,7 @@ def snack_embed(
         each_fun = None,
         verbose = True,
         num_threads = None,
+        snack_logger = None
 ):
     """Learn the triplet embedding for the given triplets.
 
@@ -255,6 +257,7 @@ def snack_embed(
 
     """
     def logf(s, *args):
+        snack_logger.info(s%args)
         if verbose: print s%args
 
     # Set number of threads
@@ -511,4 +514,10 @@ cpdef tste_grad(npX,
         #         # The 2*lamb*npx is for regularization: derivative of L2 norm
         #         dC[n,i] = dC[n,i] + 2*lamb*X[n,i]
     return C, npdC
-
+'''
+class SnackTsne(object):
+    def __init__(self):
+        self.conf = snack_conf()
+        self.snack_logger = self.conf.get_logger("snackinfo")
+    def 
+'''
