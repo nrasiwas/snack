@@ -25,7 +25,6 @@ import gc
 
 from libc cimport math
 from libc.stdlib cimport malloc, free
-from confobj import Confobj as snack_conf
 
 # External wrappers for Barnes Hut t-SNE:
 cdef extern from "tsne.h":
@@ -277,7 +276,7 @@ def snack_embed(
     gains_np = np.zeros((N, no_dims), 'double') + 1.0
     # Y_np = initial_Y if initial_Y is not None else np.random.randn(N, no_dims) * 0.0001
     Y_np = np.asarray(Z_np) 
-    logf('type of Y_np = %s',type(Y_np))
+    # logf('type of Y_np = %s',type(Y_np))
     cdef double[:, ::1] dY_tSNE = dY_tSNE_np # Save gradient wrt. tSNE
     cdef double[:, ::1] dY_tSTE = dY_tSTE_np # Save gradient wrt. tSTE (triplets)
     cdef double[:, ::1] dY = dY_np           # Combined gradient (instantaneous)
@@ -289,7 +288,7 @@ def snack_embed(
     for i in xrange(N):
         for j in xrange(no_dims):
             oriY[i,j] = Y[i,j]
-    logf('type of Y = %s',type(Y))
+    # logf('type of Y = %s',type(Y))
     alpha = alpha or no_dims - 1             # Degrees of freedom in Student-T kernel
     exact = (theta == 0)
     tsne_evaluator = Exact_BHTSNE() if exact else Inexact_BHTSNE()
@@ -309,6 +308,8 @@ def snack_embed(
         perplexity = ((N - 1) / 3) - 1;
 
     logf("Using no_dims = %d, perplexity = %f, and theta = %f", no_dims, perplexity, theta)
+    logf('contrib_cost_tsne = %f',contrib_cost_tsne)
+    logf('contrib_cost_triplets = %f',contrib_cost_triplets)
     logf("Computing input similarities...")
     tsne_evaluator.calculate_perplexity(X, perplexity)
 
@@ -322,8 +323,6 @@ def snack_embed(
     # Gradient descent!!
     C_tSNE = lambda: -1
     C_tSTE = lambda: -1
-    logf('contrib_cost_tsne = %f',contrib_cost_tsne)
-    logf('contrib_cost_triplets = %f',contrib_cost_triplets)
     for iter in xrange(max_iter):
         if contrib_cost_tsne:
             tsne_evaluator.calculate_gradient(Y, no_dims, dY_tSNE, theta)
@@ -514,10 +513,3 @@ cpdef tste_grad(npX,
         #         # The 2*lamb*npx is for regularization: derivative of L2 norm
         #         dC[n,i] = dC[n,i] + 2*lamb*X[n,i]
     return C, npdC
-'''
-class SnackTsne(object):
-    def __init__(self):
-        self.conf = snack_conf()
-        self.snack_logger = self.conf.get_logger("snackinfo")
-    def 
-'''
